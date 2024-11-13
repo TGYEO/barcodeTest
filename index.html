@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR 코드 스캐너</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+    <title>QR 코드 스캐너 (ZXing)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.2/zxing.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,10 +32,6 @@
             border-radius: 10px;
         }
 
-        #qr-canvas {
-            display: none;
-        }
-
         #result {
             padding: 15px;
             margin-top: 20px;
@@ -56,10 +52,19 @@
             padding: 10px 20px;
             border-radius: 20px;
         }
+
+        #sourceSelect {
+            margin: 10px 0;
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
     <div id="container">
+        <select id="sourceSelect" style="display: none"></select>
         <div id="video-container">
             <video id="qr-video" playsinline></video>
             <div class="scanning-overlay">스캔 중...</div>
@@ -68,12 +73,12 @@
     </div>
 
     <script>
-        const video = document.getElementById('qr-video');
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        const videoElement = document.getElementById('qr-video');
         const resultElement = document.getElementById('result');
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        let scanning = true;
-
+        const sourceSelect = document.getElementById('sourceSelect');
+        let selectedDeviceId;
+        
         // 비프음 생성을 위한 AudioContext 설정
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
@@ -85,56 +90,62 @@
             gainNode.connect(audioContext.destination);
             
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // 주파수 설정
-            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime); // 볼륨 설정
+            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
             
             oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.2); // 0.2초 동안 재생
+            oscillator.stop(audioContext.currentTime + 0.2);
         }
 
-        // 카메라 접근 및 스트림 시작
-        navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: 'environment'  // 후면 카메라 우선 사용
-            } 
-        })
-        .then(function(stream) {
-            video.srcObject = stream;
-            video.setAttribute('playsinline', true);
-            video.play();
-            requestAnimationFrame(tick);
-        })
-        .catch(function(err) {
-            console.error('카메라 접근 오류:', err);
-            resultElement.textContent = '카메라를 사용할 수 없습니다.';
-        });
+        // 사용 가능한 카메라 장치 목록 가져오기
+        codeReader.listVideoInputDevices()
+            .then((videoInputDevices) => {
+                if (videoInputDevices.length > 1) {
+                    sourceSelect.style.display = 'block';
+                    videoInputDevices.forEach((device) => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `카메라 ${sourceSelect.length + 1}`;
+                        sourceSelect.appendChild(option);
+                    });
 
-        function tick() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA && scanning) {
-                canvas.height = video.videoHeight;
-                canvas.width = video.videoWidth;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
+                    sourceSelect.onchange = () => {
+                        selectedDeviceId = sourceSelect.value;
+                        startScanning();
+                    };
+                }
+                startScanning();
+            })
+            .catch((err) => {
+                console.error(err);
+                resultElement.textContent = '카메라를 사용할 수 없습니다.';
+            });
 
-                if (code) {
-                    scanning = false;
-                    playBeep(); // QR 코드 인식시 비프음 재생
-                    resultElement.textContent = `스캔 결과: ${code.data}`;
+        function startScanning() {
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'qr-video', (result, err) => {
+                if (result) {
+                    playBeep();
+                    resultElement.textContent = `스캔 결과: ${result.text}`;
+                    
+                    // 스캔 일시 중지
+                    codeReader.reset();
                     
                     // 3초 후 다시 스캔 시작
                     setTimeout(() => {
-                        scanning = true;
                         resultElement.textContent = 'QR 코드를 스캔해주세요.';
+                        startScanning();
                     }, 3000);
                 }
-            }
-            if (scanning) {
-                requestAnimationFrame(tick);
-            }
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.error(err);
+                }
+            });
         }
+
+        // 페이지를 떠날 때 스캐너 정리
+        window.addEventListener('beforeunload', () => {
+            codeReader.reset();
+        });
     </script>
 </body>
 </html>

@@ -7,7 +7,6 @@
     <script src="./jsQR.js"></script>
     <link href="https://fonts.googleapis.com/css?family=Noto+Sans+KR" rel="stylesheet">
     <style>
-        /* 이전 CSS 스타일 동일하게 유지 */
         * {
             margin: 0;
             padding: 0;
@@ -64,13 +63,27 @@
 
         .controls {
             display: flex;
-            justify-content: space-around;
+            gap: 1rem;
             padding: 1rem;
             background: white;
             position: fixed;
             bottom: 0;
             width: 100%;
             box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+        }
+
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
         }
 
         button {
@@ -81,6 +94,7 @@
             color: white;
             font-size: 1rem;
             cursor: pointer;
+            flex: 1;
         }
 
         button:disabled {
@@ -102,6 +116,12 @@
 
         .item-info div {
             margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .scanned-time {
+            color: #666;
+            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -120,13 +140,16 @@
     <div class="result-container" id="output" hidden>
         <h3>스캔 결과</h3>
         <div class="item-info">
-            <div><b>자재 코드:</b> <span id="itemCode"></span></div>
-            <div><b>자재명:</b> <span id="itemName"></span></div>
-            <div><b>수량:</b> <span id="itemQuantity"></span></div>
+            <div><b>제품명:</b> <span id="itemName"></span></div>
+            <div class="scanned-time"><span id="scanTime"></span></div>
         </div>
     </div>
 
     <div class="controls">
+        <div class="quantity-control">
+            <label for="quantity">수량:</label>
+            <input type="number" id="quantity" value="1" min="1">
+        </div>
         <button id="inButton" disabled>입고</button>
         <button id="outButton" disabled>출고</button>
     </div>
@@ -146,50 +169,37 @@
         function playBeep() {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 1000; // 주파수 1000Hz
-            gainNode.gain.value = 0.1; // 볼륨 조절
-
+            oscillator.connect(audioContext.destination);
+            oscillator.frequency.value = 800;
             oscillator.start();
-            // 0.1초 후 비프음 중지
-            setTimeout(() => {
-                oscillator.stop();
-                audioContext.close();
-            }, 100);
+            setTimeout(() => oscillator.stop(), 100);
         }
 
         // 진동 함수
         function vibrate() {
             if (navigator.vibrate) {
-                navigator.vibrate(200); // 200ms 동안 진동
+                navigator.vibrate(200);
             }
+        }
+
+        // 현재 시간 포맷팅 함수
+        function getCurrentTime() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
         }
 
         // QR 코드 스캔 성공 시 실행할 함수
         function onScanSuccess(qrCode) {
             scanning = false;
-            playBeep(); // 비프음 재생
-            vibrate(); // 진동
+            playBeep();
+            vibrate();
 
-            // QR 코드 데이터 파싱 및 표시
-            try {
-                const data = JSON.parse(qrCode.data);
-                document.getElementById('itemCode').textContent = data.code || '없음';
-                document.getElementById('itemName').textContent = data.name || '없음';
-                document.getElementById('itemQuantity').textContent = data.quantity || '0';
-                
-                output.hidden = false;
-                inButton.disabled = false;
-                outButton.disabled = false;
-            } catch (e) {
-                alert('잘못된 QR 코드입니다.');
-                scanning = true;
-            }
+            document.getElementById('itemName').textContent = qrCode.data;
+            document.getElementById('scanTime').textContent = '스캔 시간: ' + getCurrentTime();
+            
+            output.hidden = false;
+            inButton.disabled = false;
+            outButton.disabled = false;
         }
 
         // 카메라 설정
@@ -232,12 +242,16 @@
 
         // 입출고 버튼 이벤트 핸들러
         inButton.addEventListener('click', () => {
-            alert('입고 처리되었습니다.');
+            const quantity = document.getElementById('quantity').value;
+            const itemName = document.getElementById('itemName').textContent;
+            alert(`[입고] ${itemName}\n수량: ${quantity}개`);
             resetScanner();
         });
 
         outButton.addEventListener('click', () => {
-            alert('출고 처리되었습니다.');
+            const quantity = document.getElementById('quantity').value;
+            const itemName = document.getElementById('itemName').textContent;
+            alert(`[출고] ${itemName}\n수량: ${quantity}개`);
             resetScanner();
         });
 
@@ -246,6 +260,7 @@
             output.hidden = true;
             inButton.disabled = true;
             outButton.disabled = true;
+            document.getElementById('quantity').value = 1;
         }
     </script>
 </body>

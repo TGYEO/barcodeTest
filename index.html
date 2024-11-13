@@ -3,22 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>바코드 스캐너</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <title>QR 코드 스캐너</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
     <style>
         #interactive.viewport {
             position: relative;
             width: 100%;
             height: 300px;
         }
-        #interactive.viewport > canvas, #interactive.viewport > video {
-            max-width: 100%;
+        #video {
             width: 100%;
+            height: 300px;
+            object-fit: cover;
         }
-        canvas.drawing, canvas.drawingBuffer {
-            position: absolute;
-            left: 0;
-            top: 0;
+        #canvas {
+            display: none;
         }
         #result {
             margin: 20px;
@@ -46,57 +45,81 @@
 </head>
 <body>
     <div class="button-container">
-        <button onclick="startScanner()">스캐너 시작</button>
+        <button onclick="toggleScanner()">스캐너 시작</button>
     </div>
-    <div id="interactive" class="viewport"></div>
-    <div id="result">바코드를 스캔해주세요...</div>
-
+    <div id="interactive" class="viewport">
+        <video id="video"></video>
+        <canvas id="canvas"></canvas>
+    </div>
+    <div id="result">QR 코드를 스캔해주세요...</div>
+    <audio id="beep" src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..." preload="auto"></audio>
     <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
         let isScanning = false;
+        let scanInterval;
 
-        function startScanner() {
+        // 스캐너 토글 함수
+        function toggleScanner() {
             if (isScanning) {
-                Quagga.stop();
-                isScanning = false;
-                document.querySelector('button').textContent = '스캐너 시작';
-                return;
+                stopScanner();
+            } else {
+                startScanner();
             }
+        }
 
-            isScanning = true;
-            document.querySelector('button').textContent = '스캐너 중지';
+        // 스캐너 시작 함수
+        async function startScanner() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+                video.srcObject = stream;
+                video.setAttribute('playsinline', true);
+                video.play();
+                isScanning = true;
+                document.querySelector('button').textContent = '스캐너 중지';
+                scanInterval = setInterval(scan, 100);
+            } catch (err) {
+                console.error("카메라 시작 중 오류가 발생했습니다:", err);
+                alert("카메라를 시작할 수 없습니다: " + err.message);
+            }
+        }
 
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector("#interactive"),
-                    constraints: {
-                        facingMode: "environment"
-                    },
-                },
-                decoder: {
-                    readers: [
-                        "ean_reader",
-                        "ean_8_reader",
-                        "code_128_reader",
-                        "code_39_reader",
-                        "upc_reader"
-                    ]
+        // 스캐너 중지 함수
+        function stopScanner() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            clearInterval(scanInterval);
+            isScanning = false;
+            document.querySelector('button').textContent = '스캐너 시작';
+        }
+
+        // QR 코드 스캔 함수
+        function scan() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                
+                if (code) {
+                    // 스캔 성공 시 소리 재생
+                    playBeepSound();
+                    document.getElementById('result').textContent = "스캔된 QR 코드: " + code.data;
+                    // 스캔 후 자동 중지
+                    stopScanner();
                 }
-            }, function(err) {
-                if (err) {
-                    console.error(err);
-                    alert("카메라 시작 중 오류가 발생했습니다: " + err);
-                    return;
-                }
-                Quagga.start();
-            });
+            }
+        }
 
-            Quagga.onDetected(function(result) {
-                let code = result.codeResult.code;
-                document.getElementById('result').textContent = 
-                    "스캔된 바코드: " + code;
-            });
+        // 비프음 재생 함수
+        function playBeepSound() {
+            const beep = document.getElementById('beep');
+            beep.play().catch(error => console.log("오디오 재생 실패:", error));
         }
     </script>
 </body>

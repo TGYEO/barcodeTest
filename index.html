@@ -1,151 +1,142 @@
-<!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR 코드 스캐너 (ZXing)</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.2/zxing.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #f0f0f0;
-        }
+	<meta charset="utf-8">
+	<title>QR scan test</title>
+	<script src="./jsQR.js"></script>
 
-        #container {
-            max-width: 600px;
-            width: 100%;
-        }
-
-        #video-container {
-            position: relative;
-            width: 100%;
-            margin-bottom: 20px;
-        }
-
-        #qr-video {
-            width: 100%;
-            border-radius: 10px;
-        }
-
-        #result {
-            padding: 15px;
-            margin-top: 20px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            word-break: break-all;
-        }
-
-        .scanning-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 18px;
-            color: white;
-            background-color: rgba(0,0,0,0.5);
-            padding: 10px 20px;
-            border-radius: 20px;
-        }
-
-        #sourceSelect {
-            margin: 10px 0;
-            width: 100%;
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-        }
-    </style>
+	<style type="text/css">
+		main {
+			width:100%;
+			height:100%;
+			text-align:center;
+		}
+		div#frame {
+			border:2px solid #005666;
+			background-color:#FFFFFF;
+			margin-left:10px;
+			margin-right:10px;
+			padding-left:8px;
+			padding-right:8px;
+			padding-top:8px;
+			padding-bottom:8px;	
+		}
+		div#outputLayer {
+			text-align:left;
+		}
+		canvas {
+			width:100%;
+		}
+	</style>
 </head>
+
+<script type="text/javascript">
+	// 스캔
+	function startScan() {
+		var video = document.createElement("video");		
+		var canvasElement = document.getElementById("canvas");
+		var canvas = canvasElement.getContext("2d");
+		var loadingMessage = document.getElementById("loadingMessage");
+		var outputContainer = document.getElementById("output");
+		var outputMessage = document.getElementById("outputMessage");
+		var outputData = document.getElementById("outputData");
+
+		function drawLine(begin, end, color) {
+			canvas.beginPath();
+			canvas.moveTo(begin.x, begin.y);
+			canvas.lineTo(end.x, end.y);
+			canvas.lineWidth = 4;
+			canvas.strokeStyle = color;
+			canvas.stroke();
+		}
+
+	        // 카메라 사용시
+		navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
+     		    video.srcObject = stream;
+      		    video.setAttribute("playsinline", true);      // iOS 사용시 전체 화면을 사용하지 않음을 전달
+         		video.play();
+      		    requestAnimationFrame(tick);
+		});
+
+		function tick() {
+			loadingMessage.innerText = "⌛ 스캔 기능을 활성화 중입니다."
+
+			if(video.readyState === video.HAVE_ENOUGH_DATA) {
+				loadingMessage.hidden = true;
+				canvasElement.hidden = false;
+				outputContainer.hidden = false;
+
+				// 읽어들이는 비디오 화면의 크기
+				canvasElement.height = video.videoHeight;
+				canvasElement.width = video.videoWidth;
+				canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+				
+				var imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+				var code = jsQR(imageData.data, imageData.width, imageData.height, {
+                                inversionAttempts : "dontInvert",
+    		    });
+				
+				// QR코드 인식에 성공한 경우
+				if(code) {
+					// 인식한 QR코드의 영역을 감싸는 사용자에게 보여지는 테두리 생성
+					drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF0000");
+					drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF0000");
+					drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF0000");
+					drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF0000");
+					
+					outputMessage.hidden = true;
+					outputData.parentElement.hidden = false;
+
+					// QR코드 메시지 출력
+					outputData.innerHTML = code.data;
+
+					// return을 써서 함수를 빠져나가면 QR코드 프로그램이 종료된다.
+					return;
+				}
+				// QR코드 인식에 실패한 경우
+				else {
+					outputMessage.hidden = false;
+					outputData.parentElement.hidden = true;
+				}
+			}
+			requestAnimationFrame(tick);
+		}
+	}
+	
+	// 카메라 열기
+	function openCamera() {
+		startScan();
+	}
+</script>
+
 <body>
-    <div id="container">
-        <select id="sourceSelect" style="display: none"></select>
-        <div id="video-container">
-            <video id="qr-video" playsinline></video>
-            <div class="scanning-overlay">스캔 중...</div>
-        </div>
-        <div id="result">QR 코드를 스캔해주세요.</div>
-    </div>
-
-    <script>
-        const codeReader = new ZXing.BrowserMultiFormatReader();
-        const videoElement = document.getElementById('qr-video');
-        const resultElement = document.getElementById('result');
-        const sourceSelect = document.getElementById('sourceSelect');
-        let selectedDeviceId;
-        
-        // 비프음 생성을 위한 AudioContext 설정
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        function playBeep() {
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.2);
-        }
-
-        // 사용 가능한 카메라 장치 목록 가져오기
-        codeReader.listVideoInputDevices()
-            .then((videoInputDevices) => {
-                if (videoInputDevices.length > 1) {
-                    sourceSelect.style.display = 'block';
-                    videoInputDevices.forEach((device) => {
-                        const option = document.createElement('option');
-                        option.value = device.deviceId;
-                        option.text = device.label || `카메라 ${sourceSelect.length + 1}`;
-                        sourceSelect.appendChild(option);
-                    });
-
-                    sourceSelect.onchange = () => {
-                        selectedDeviceId = sourceSelect.value;
-                        startScanning();
-                    };
-                }
-                startScanning();
-            })
-            .catch((err) => {
-                console.error(err);
-                resultElement.textContent = '카메라를 사용할 수 없습니다.';
-            });
-
-        function startScanning() {
-            codeReader.decodeFromVideoDevice(selectedDeviceId, 'qr-video', (result, err) => {
-                if (result) {
-                    playBeep();
-                    resultElement.textContent = `스캔 결과: ${result.text}`;
-                    
-                    // 스캔 일시 중지
-                    codeReader.reset();
-                    
-                    // 3초 후 다시 스캔 시작
-                    setTimeout(() => {
-                        resultElement.textContent = 'QR 코드를 스캔해주세요.';
-                        startScanning();
-                    }, 3000);
-                }
-                if (err && !(err instanceof ZXing.NotFoundException)) {
-                    console.error(err);
-                }
-            });
-        }
-
-        // 페이지를 떠날 때 스캐너 정리
-        window.addEventListener('beforeunload', () => {
-            codeReader.reset();
-        });
-    </script>
+<div class="main_page">
+	<main align="center">
+		<div align="center">
+			<div></div>
+			<div id="frame">
+				<div id="loadingMessage">
+					🎥 비디오 스트림에 액세스 할 수 없습니다<br/>웹캠이 활성화되어 있는지 확인하십시오
+				</div>
+				<canvas id="canvas"></canvas>
+			</div>
+		</div>
+		
+		<br/>
+		<input type="button" id="button1" onclick="openCamera();" value="카메라 열기" style="width:97%;height:30px"/>
+		<br/>
+		<div></div>
+		<div id="test" width="100%">
+			<h1>QR 코드 스캔 결과</h1>
+			<div id="output">
+				<div id="outputMessage">
+					
+				</div>
+				<div id="outputLayer" hidden>
+					<span id="outputData"></span>
+				</div>
+			</div>
+		</div>
+	</main>
+</div>
 </body>
 </html>

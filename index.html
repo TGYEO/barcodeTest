@@ -1,122 +1,252 @@
+<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>jsQR Demo</title>
-  <script src="./jsQR.js"></script>
-  <link href="https://fonts.googleapis.com/css?family=Ropa+Sans" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Ropa Sans', sans-serif;
-      color: #333;
-      max-width: 640px;
-      margin: 0 auto;
-      position: relative;
-    }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자재 입출고 시스템</title>
+    <script src="./jsQR.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Noto+Sans+KR" rel="stylesheet">
+    <style>
+        /* 이전 CSS 스타일 동일하게 유지 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
 
-    #githubLink {
-      position: absolute;
-      right: 0;
-      top: 12px;
-      color: #2D99FF;
-    }
+        body {
+            max-width: 100%;
+            margin: 0 auto;
+            background-color: #f5f5f5;
+        }
 
-    h1 {
-      margin: 10px 0;
-      font-size: 40px;
-    }
+        .header {
+            background-color: #1a73e8;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            position: relative;
+        }
 
-    #loadingMessage {
-      text-align: center;
-      padding: 40px;
-      background-color: #eee;
-    }
+        .scan-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
 
-    #canvas {
-      width: 100%;
-    }
+        #canvas {
+            width: 100%;
+            height: auto;
+            margin-top: 1rem;
+        }
 
-    #output {
-      margin-top: 20px;
-      background: #eee;
-      padding: 10px;
-      padding-bottom: 0;
-    }
+        .scanner-ui {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            height: 280px;
+            border: 2px solid #1a73e8;
+            border-radius: 20px;
+            pointer-events: none;
+        }
 
-    #output div {
-      padding-bottom: 10px;
-      word-wrap: break-word;
-    }
+        .result-container {
+            margin: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
 
-    #noQRFound {
-      text-align: center;
-    }
-  </style>
+        .controls {
+            display: flex;
+            justify-content: space-around;
+            padding: 1rem;
+            background: white;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+        }
+
+        button {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            background-color: #1a73e8;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+        }
+
+        #loadingMessage {
+            text-align: center;
+            padding: 1rem;
+            background-color: #fafafa;
+        }
+
+        .item-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .item-info div {
+            margin-bottom: 0.5rem;
+        }
+    </style>
 </head>
 <body>
-  <h1>jsQR Demo</h1>
-  <a id="githubLink" href="https://github.com/cozmo/jsQR">View documentation on Github</a>
-  <p>Pure JavaScript QR code decoding library.</p>
-  <div id="loadingMessage">🎥 Unable to access video stream (please make sure you have a webcam enabled)</div>
-  <canvas id="canvas" hidden></canvas>
-  <div id="output" hidden>
-    <div id="outputMessage">No QR code detected.</div>
-    <div hidden><b>Data:</b> <span id="outputData"></span></div>
-  </div>
-  <script>
-    var video = document.createElement("video");
-    var canvasElement = document.getElementById("canvas");
-    var canvas = canvasElement.getContext("2d");
-    var loadingMessage = document.getElementById("loadingMessage");
-    var outputContainer = document.getElementById("output");
-    var outputMessage = document.getElementById("outputMessage");
-    var outputData = document.getElementById("outputData");
+    <div class="header">
+        <h1>자재 입출고 시스템</h1>
+    </div>
 
-    function drawLine(begin, end, color) {
-      canvas.beginPath();
-      canvas.moveTo(begin.x, begin.y);
-      canvas.lineTo(end.x, end.y);
-      canvas.lineWidth = 4;
-      canvas.strokeStyle = color;
-      canvas.stroke();
-    }
+    <div id="loadingMessage">🎥 카메라 활성화 중...</div>
+    
+    <div class="scan-container">
+        <canvas id="canvas" hidden></canvas>
+        <div class="scanner-ui" hidden></div>
+    </div>
 
-    // Use facingMode: environment to attemt to get the front camera on phones
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
-      video.srcObject = stream;
-      video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
-      video.play();
-      requestAnimationFrame(tick);
-    });
+    <div class="result-container" id="output" hidden>
+        <h3>스캔 결과</h3>
+        <div class="item-info">
+            <div><b>자재 코드:</b> <span id="itemCode"></span></div>
+            <div><b>자재명:</b> <span id="itemName"></span></div>
+            <div><b>수량:</b> <span id="itemQuantity"></span></div>
+        </div>
+    </div>
 
-    function tick() {
-      loadingMessage.innerText = "⌛ Loading video..."
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        loadingMessage.hidden = true;
-        canvasElement.hidden = false;
-        outputContainer.hidden = false;
+    <div class="controls">
+        <button id="inButton" disabled>입고</button>
+        <button id="outButton" disabled>출고</button>
+    </div>
 
-        canvasElement.height = video.videoHeight;
-        canvasElement.width = video.videoWidth;
-        canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-        var imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
-        var code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-        if (code) {
-          drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
-          drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
-          drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
-          drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
-          outputMessage.hidden = true;
-          outputData.parentElement.hidden = false;
-          outputData.innerText = code.data;
-        } else {
-          outputMessage.hidden = false;
-          outputData.parentElement.hidden = true;
+    <script>
+        const video = document.createElement("video");
+        const canvasElement = document.getElementById("canvas");
+        const canvas = canvasElement.getContext("2d");
+        const loadingMessage = document.getElementById("loadingMessage");
+        const output = document.getElementById("output");
+        const scannerUI = document.querySelector('.scanner-ui');
+        const inButton = document.getElementById("inButton");
+        const outButton = document.getElementById("outButton");
+        let scanning = true;
+
+        // 간단한 비프음 생성 함수
+        function playBeep() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 1000; // 주파수 1000Hz
+            gainNode.gain.value = 0.1; // 볼륨 조절
+
+            oscillator.start();
+            // 0.1초 후 비프음 중지
+            setTimeout(() => {
+                oscillator.stop();
+                audioContext.close();
+            }, 100);
         }
-      }
-      requestAnimationFrame(tick);
-    }
-  </script>
+
+        // 진동 함수
+        function vibrate() {
+            if (navigator.vibrate) {
+                navigator.vibrate(200); // 200ms 동안 진동
+            }
+        }
+
+        // QR 코드 스캔 성공 시 실행할 함수
+        function onScanSuccess(qrCode) {
+            scanning = false;
+            playBeep(); // 비프음 재생
+            vibrate(); // 진동
+
+            // QR 코드 데이터 파싱 및 표시
+            try {
+                const data = JSON.parse(qrCode.data);
+                document.getElementById('itemCode').textContent = data.code || '없음';
+                document.getElementById('itemName').textContent = data.name || '없음';
+                document.getElementById('itemQuantity').textContent = data.quantity || '0';
+                
+                output.hidden = false;
+                inButton.disabled = false;
+                outButton.disabled = false;
+            } catch (e) {
+                alert('잘못된 QR 코드입니다.');
+                scanning = true;
+            }
+        }
+
+        // 카메라 설정
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            } 
+        }).then(function(stream) {
+            video.srcObject = stream;
+            video.setAttribute("playsinline", true);
+            video.play();
+            requestAnimationFrame(tick);
+        });
+
+        function tick() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                loadingMessage.hidden = true;
+                canvasElement.hidden = false;
+                scannerUI.hidden = false;
+
+                canvasElement.height = video.videoHeight;
+                canvasElement.width = video.videoWidth;
+                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+                
+                if (scanning) {
+                    const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert",
+                    });
+
+                    if (code) {
+                        onScanSuccess(code);
+                    }
+                }
+            }
+            requestAnimationFrame(tick);
+        }
+
+        // 입출고 버튼 이벤트 핸들러
+        inButton.addEventListener('click', () => {
+            alert('입고 처리되었습니다.');
+            resetScanner();
+        });
+
+        outButton.addEventListener('click', () => {
+            alert('출고 처리되었습니다.');
+            resetScanner();
+        });
+
+        function resetScanner() {
+            scanning = true;
+            output.hidden = true;
+            inButton.disabled = true;
+            outButton.disabled = true;
+        }
+    </script>
 </body>
 </html>

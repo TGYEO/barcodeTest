@@ -2,215 +2,70 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR 코드 스캐너</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
     <style>
         body {
+            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
+            background-color: #f0f0f0;
         }
-        #interactive.viewport {
+
+        #container {
+            max-width: 600px;
+            width: 100%;
+        }
+
+        #video-container {
             position: relative;
             width: 100%;
-            height: 70vh;
-            overflow: hidden;
-            background: #000;
+            margin-bottom: 20px;
         }
-        #video {
+
+        #qr-video {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            border-radius: 10px;
         }
-        #canvas {
+
+        #qr-canvas {
             display: none;
         }
-        #qr-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            border: 2px solid #ff0000;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-        }
+
         #result {
-            margin: 20px;
-            padding: 10px;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-            width: 80%;
-            text-align: center;
+            padding: 15px;
+            margin-top: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            word-break: break-all;
         }
-        .button-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            padding: 20px;
-            background: #fff;
-        }
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
-        }
-        button:active {
-            background-color: #0056b3;
-        }
-        .loading-message {
+
+        .scanning-overlay {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
+            font-size: 18px;
             color: white;
-            background: rgba(0,0,0,0.7);
+            background-color: rgba(0,0,0,0.5);
             padding: 10px 20px;
-            border-radius: 5px;
-            display: none;
+            border-radius: 20px;
         }
     </style>
 </head>
 <body>
-    <div class="button-container">
-        <button onclick="toggleScanner()" id="scanButton">스캐너 시작</button>
-        <button onclick="toggleCamera()" id="cameraButton">카메라 전환</button>
+    <div id="container">
+        <div id="video-container">
+            <video id="qr-video" playsinline></video>
+            <div class="scanning-overlay">스캔 중...</div>
+        </div>
+        <div id="result">QR 코드를 스캔해주세요.</div>
     </div>
-    <div id="interactive" class="viewport">
-        <video id="video" playsinline webkit-playsinline></video>
-        <canvas id="canvas"></canvas>
-        <div id="qr-overlay"></div>
-        <div class="loading-message" id="loadingMessage">카메라 권한을 허용해주세요...</div>
-    </div>
-    <div id="result">QR 코드를 스캔해주세요...</div>
-    
-    <script>
-        let video = document.getElementById('video');
-        let canvas = document.getElementById('canvas');
-        let ctx = canvas.getContext('2d');
-        let isScanning = false;
-        let scanInterval;
-        let currentCamera = 'environment';
-        let loadingMessage = document.getElementById('loadingMessage');
 
-        // iOS 사파리 체크
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-        async function toggleCamera() {
-            currentCamera = currentCamera === 'environment' ? 'user' : 'environment';
-            if (isScanning) {
-                await stopScanner();
-                await startScanner();
-            }
-        }
-
-        async function toggleScanner() {
-            if (isScanning) {
-                await stopScanner();
-            } else {
-                await startScanner();
-            }
-        }
-
-        async function startScanner() {
-            try {
-                loadingMessage.style.display = 'block';
-                
-                let constraints = {
-                    video: {
-                        facingMode: currentCamera
-                    }
-                };
-
-                // iOS Safari에 대한 특별 처리
-                if (isIOS && isSafari) {
-                    constraints.video = {
-                        facingMode: currentCamera,
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 }
-                    };
-                }
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                video.setAttribute('playsinline', true);
-                video.setAttribute('webkit-playsinline', true);
-                
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play().then(resolve);
-                    };
-                });
-
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                
-                isScanning = true;
-                document.getElementById('scanButton').textContent = '스캐너 중지';
-                loadingMessage.style.display = 'none';
-                
-                // iOS에서는 스캔 간격을 좀 더 길게 설정
-                const scanDelay = isIOS ? 250 : 100;
-                scanInterval = setInterval(scan, scanDelay);
-                
-            } catch (err) {
-                console.error("카메라 시작 중 오류:", err);
-                loadingMessage.textContent = "카메라를 시작할 수 없습니다: " + err.message;
-                setTimeout(() => loadingMessage.style.display = 'none', 3000);
-            }
-        }
-
-        async function stopScanner() {
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-            clearInterval(scanInterval);
-            isScanning = false;
-            document.getElementById('scanButton').textContent = '스캐너 시작';
-        }
-
-        function scan() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                try {
-                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                        inversionAttempts: "dontInvert"
-                    });
-                    
-                    if (code) {
-                        console.log("QR 코드 발견:", code.data);
-                        document.getElementById('result').textContent = "스캔된 QR 코드: " + code.data;
-                        // 성공 시 진동 (iOS에서 지원하는 경우)
-                        if (navigator.vibrate) {
-                            navigator.vibrate(200);
-                        }
-                        stopScanner();
-                    }
-                } catch (error) {
-                    console.error("QR 스캔 중 오류:", error);
-                }
-            }
-        }
-
-        // iOS에서 페이지 새로고침시 카메라 정리
-        window.addEventListener('pagehide', stopScanner);
-        window.addEventListener('beforeunload', stopScanner);
-    </script>
-</body>
-</html>
+    <audio id="beep" preload="auto">
+        <source src="data:audio/mp3;base64,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

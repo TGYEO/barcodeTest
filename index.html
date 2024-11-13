@@ -2,21 +2,30 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QR 코드 스캐너</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
     <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
         #interactive.viewport {
             position: relative;
             width: 100%;
-            max-width: 640px; /* 최대 너비 설정 */
-            margin: 0 auto;
+            height: 70vh;
+            overflow: hidden;
+            background: #000;
         }
         #video {
             width: 100%;
-            height: auto;
-            max-height: 480px; /* 최대 높이 설정 */
-            object-fit: contain;
+            height: 100%;
+            object-fit: cover;
         }
         #canvas {
             display: none;
@@ -36,104 +45,142 @@
             padding: 10px;
             background-color: #f0f0f0;
             border-radius: 5px;
+            width: 80%;
+            text-align: center;
         }
         .button-container {
-            text-align: center;
-            margin: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 20px;
+            background: #fff;
         }
         button {
-            padding: 10px 20px;
+            padding: 12px 24px;
             font-size: 16px;
             background-color: #007bff;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
-        button:hover {
+        button:active {
             background-color: #0056b3;
+        }
+        .loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="button-container">
-        <button onclick="toggleScanner()">스캐너 시작</button>
-        <button onclick="toggleCamera()">카메라 전환</button>
+        <button onclick="toggleScanner()" id="scanButton">스캐너 시작</button>
+        <button onclick="toggleCamera()" id="cameraButton">카메라 전환</button>
     </div>
     <div id="interactive" class="viewport">
-        <video id="video" playsinline></video>
+        <video id="video" playsinline webkit-playsinline></video>
         <canvas id="canvas"></canvas>
         <div id="qr-overlay"></div>
+        <div class="loading-message" id="loadingMessage">카메라 권한을 허용해주세요...</div>
     </div>
     <div id="result">QR 코드를 스캔해주세요...</div>
-    <audio id="beep" src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..." preload="auto"></audio>
+    
     <script>
         let video = document.getElementById('video');
         let canvas = document.getElementById('canvas');
         let ctx = canvas.getContext('2d');
         let isScanning = false;
         let scanInterval;
-        let currentCamera = 'environment'; // 현재 카메라 모드
+        let currentCamera = 'environment';
+        let loadingMessage = document.getElementById('loadingMessage');
 
-        // 카메라 전환 함수
+        // iOS 사파리 체크
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
         async function toggleCamera() {
             currentCamera = currentCamera === 'environment' ? 'user' : 'environment';
             if (isScanning) {
-                stopScanner();
+                await stopScanner();
                 await startScanner();
             }
         }
 
-        // 스캐너 토글 함수
-        function toggleScanner() {
+        async function toggleScanner() {
             if (isScanning) {
-                stopScanner();
+                await stopScanner();
             } else {
-                startScanner();
+                await startScanner();
             }
         }
 
-        // 스캐너 시작 함수
         async function startScanner() {
             try {
-                const constraints = {
+                loadingMessage.style.display = 'block';
+                
+                let constraints = {
                     video: {
-                        facingMode: currentCamera,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        aspectRatio: { ideal: 1.7777777778 }
+                        facingMode: currentCamera
                     }
                 };
+
+                // iOS Safari에 대한 특별 처리
+                if (isIOS && isSafari) {
+                    constraints.video = {
+                        facingMode: currentCamera,
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 }
+                    };
+                }
 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 video.setAttribute('playsinline', true);
-                await video.play();
+                video.setAttribute('webkit-playsinline', true);
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play().then(resolve);
+                    };
+                });
 
-                // 비디오 크기에 맞게 캔버스 조정
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-
+                
                 isScanning = true;
-                document.querySelector('button').textContent = '스캐너 중지';
-                scanInterval = setInterval(scan, 100); // 스캔 주기를 더 짧게 설정
+                document.getElementById('scanButton').textContent = '스캐너 중지';
+                loadingMessage.style.display = 'none';
+                
+                // iOS에서는 스캔 간격을 좀 더 길게 설정
+                const scanDelay = isIOS ? 250 : 100;
+                scanInterval = setInterval(scan, scanDelay);
+                
             } catch (err) {
-                console.error("카메라 시작 중 오류가 발생했습니다:", err);
-                alert("카메라를 시작할 수 없습니다: " + err.message);
+                console.error("카메라 시작 중 오류:", err);
+                loadingMessage.textContent = "카메라를 시작할 수 없습니다: " + err.message;
+                setTimeout(() => loadingMessage.style.display = 'none', 3000);
             }
         }
 
-        // 스캐너 중지 함수
-        function stopScanner() {
+        async function stopScanner() {
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(track => track.stop());
             }
             clearInterval(scanInterval);
             isScanning = false;
-            document.querySelector('button').textContent = '스캐너 시작';
+            document.getElementById('scanButton').textContent = '스캐너 시작';
         }
 
-        // QR 코드 스캔 함수
         function scan() {
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 canvas.width = video.videoWidth;
@@ -141,24 +188,29 @@
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
-                
-                if (code) {
-                    console.log("QR 코드 발견:", code.data); // 디버깅용 로그
-                    playBeepSound();
-                    document.getElementById('result').textContent = "스캔된 QR 코드: " + code.data;
-                    stopScanner();
+                try {
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert"
+                    });
+                    
+                    if (code) {
+                        console.log("QR 코드 발견:", code.data);
+                        document.getElementById('result').textContent = "스캔된 QR 코드: " + code.data;
+                        // 성공 시 진동 (iOS에서 지원하는 경우)
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200);
+                        }
+                        stopScanner();
+                    }
+                } catch (error) {
+                    console.error("QR 스캔 중 오류:", error);
                 }
             }
         }
 
-        // 비프음 재생 함수
-        function playBeepSound() {
-            const beep = document.getElementById('beep');
-            beep.play().catch(error => console.log("오디오 재생 실패:", error));
-        }
+        // iOS에서 페이지 새로고침시 카메라 정리
+        window.addEventListener('pagehide', stopScanner);
+        window.addEventListener('beforeunload', stopScanner);
     </script>
 </body>
 </html>

@@ -9,15 +9,27 @@
         #interactive.viewport {
             position: relative;
             width: 100%;
-            height: 300px;
+            max-width: 640px; /* 최대 너비 설정 */
+            margin: 0 auto;
         }
         #video {
             width: 100%;
-            height: 300px;
-            object-fit: cover;
+            height: auto;
+            max-height: 480px; /* 최대 높이 설정 */
+            object-fit: contain;
         }
         #canvas {
             display: none;
+        }
+        #qr-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border: 2px solid #ff0000;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
         }
         #result {
             margin: 20px;
@@ -46,10 +58,12 @@
 <body>
     <div class="button-container">
         <button onclick="toggleScanner()">스캐너 시작</button>
+        <button onclick="toggleCamera()">카메라 전환</button>
     </div>
     <div id="interactive" class="viewport">
-        <video id="video"></video>
+        <video id="video" playsinline></video>
         <canvas id="canvas"></canvas>
+        <div id="qr-overlay"></div>
     </div>
     <div id="result">QR 코드를 스캔해주세요...</div>
     <audio id="beep" src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU..." preload="auto"></audio>
@@ -59,6 +73,16 @@
         let ctx = canvas.getContext('2d');
         let isScanning = false;
         let scanInterval;
+        let currentCamera = 'environment'; // 현재 카메라 모드
+
+        // 카메라 전환 함수
+        async function toggleCamera() {
+            currentCamera = currentCamera === 'environment' ? 'user' : 'environment';
+            if (isScanning) {
+                stopScanner();
+                await startScanner();
+            }
+        }
 
         // 스캐너 토글 함수
         function toggleScanner() {
@@ -72,15 +96,27 @@
         // 스캐너 시작 함수
         async function startScanner() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }
-                });
+                const constraints = {
+                    video: {
+                        facingMode: currentCamera,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        aspectRatio: { ideal: 1.7777777778 }
+                    }
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 video.setAttribute('playsinline', true);
-                video.play();
+                await video.play();
+
+                // 비디오 크기에 맞게 캔버스 조정
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
                 isScanning = true;
                 document.querySelector('button').textContent = '스캐너 중지';
-                scanInterval = setInterval(scan, 100);
+                scanInterval = setInterval(scan, 100); // 스캔 주기를 더 짧게 설정
             } catch (err) {
                 console.error("카메라 시작 중 오류가 발생했습니다:", err);
                 alert("카메라를 시작할 수 없습니다: " + err.message);
@@ -100,17 +136,19 @@
         // QR 코드 스캔 함수
         function scan() {
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.height = video.videoHeight;
                 canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
                 
                 if (code) {
-                    // 스캔 성공 시 소리 재생
+                    console.log("QR 코드 발견:", code.data); // 디버깅용 로그
                     playBeepSound();
                     document.getElementById('result').textContent = "스캔된 QR 코드: " + code.data;
-                    // 스캔 후 자동 중지
                     stopScanner();
                 }
             }
